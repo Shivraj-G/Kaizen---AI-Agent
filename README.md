@@ -22,7 +22,7 @@ I wanted to actually understand how AI agents work under the hood, instead of im
 ## Features
 
 - **Fully local** — runs on Ollama, no API keys, no cloud costs, no data sent anywhere
-- **Real tool calling** — the model can read files, list directory contents, and create/write files, using Ollama's native function-calling API
+- **Real tool calling** — the model can read files, list directory contents,create/write files and delete files using Ollama's native function-calling API
 - **Conversation memory** — maintains full context across turns, including tool-call history
 - **Duplicate-call protection** — tracks completed tool calls by signature so the model doesn't needlessly re-run the same action
 - **Styled terminal UI** — ASCII banner and status panel via [`rich`](https://github.com/Textualize/rich)
@@ -51,6 +51,7 @@ User message → Model (Ollama) → tool_call?
 | `read_file` | Reads and returns the contents of a text file |
 | `list_file` | Lists the contents of a directory |
 | `write_file` | Creates/writes a file, with optional content |
+| `delete_file` | Deletes a file |
 
 ## Setup
 
@@ -87,7 +88,7 @@ Small local models (3B parameters) are genuinely capable of real tool use, but t
 
 ## Roadmap
 
-- [ ] Additional tools (delete file, run shell commands, web fetch)
+- [ ] Additional tools (run shell commands, web fetch)
 - [ ] ADD a proper `logging` module usage
 - [ ] Generalize the dedup guard to all tools, not just `write_file`
 
