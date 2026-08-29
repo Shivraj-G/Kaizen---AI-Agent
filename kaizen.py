@@ -65,10 +65,23 @@ payload = {"convo":[],"tools":[{"type": "function",
                         "required": ["path"]
                         }
                     }
+                },
+                {"type":"function",
+                        "function":{
+                            "name": "delete_file",
+                            "description": "Deletes a file if it exists in a directory given its path, Once the task is completed it will return 'File [path] Deleted Sucessfully'",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                "path": {"type": "string", "description": "Full path to the file, including filename and extension (not just the containing folder)"}
+                                },
+                            "required": ["path"]
+                            }
+                        }
                 }
 
                 ]}
-functions= {"read_file":tools.read_file,"list_file":tools.list_file,"write_file":tools.write_file}
+functions= {"read_file":tools.read_file,"list_file":tools.list_file,"write_file":tools.write_file,"delete_file":tools.delete_file}
 #=================================================================================================
 console.print(KAIZEN,style="blue")
 total_tools = len(payload["tools"])

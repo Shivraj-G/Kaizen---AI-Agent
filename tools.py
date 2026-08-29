@@ -38,3 +38,14 @@ def write_file(path,info=None):
         except OSError as e:
             return f"OS Error: {e}"
     else: return f"{path}, doesnot contain filename, please provide the filename along with the path"
+
+def delete_file(path):
+    try:
+        os.remove(path)
+        return f"File {path} Deleted Sucessfully"
+    except FileNotFoundError:
+        return f"File {path} Not Found"
+    except PermissionError:
+        return f"Permision Denied to access {path}"
+    except OSError as e:
+        return f"OS Error: {e}"
