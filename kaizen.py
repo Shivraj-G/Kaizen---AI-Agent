@@ -1,5 +1,7 @@
+import config
 import requests
 import tools
+from RAGsys import document_search
 from rich.console import Console
 from rich.rule import Rule
 from rich.panel import Panel
@@ -10,7 +12,8 @@ load_dotenv()
 model = os.getenv("MODEL")
 apikey = os.getenv("API")
 import logging 
-logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 KAIZEN = """
@@ -78,10 +81,38 @@ payload = {"convo":[],"tools":[{"type": "function",
                             "required": ["path"]
                             }
                         }
-                }
+                },
+                {"type":"function",
+                                        "function":{
+                                            "name": "search_web",
+                                            "description":"The exact topic or question the user wants searched. Only call this tool if the user has specified something concrete to search for — do not invent a topic.",
+                                            "parameters": {
+                                                "type": "object",
+                                                "properties": {
+                                                "query": {"type": "string", "description": "Query to search in web"}
+                                                },
+                                            "required": ["query"]
+                                            }
+                                        }
+                                },
+                {"type":"function",
+                                        "function":{
+                                            "name": "document_search",
+                                            "description":"Searches a local document using semantic retrieval and returns the most relevant passages",
+                                            "parameters": {
+                                                "type": "object",
+                                                "properties": {
+                                                "query": {"type": "string", "description": "Query to search from document"},
+                                                "path": {"type": "string", "description": "Path to file form which the text needs to be extracted for context"}
+                                                },
+                                            "required": ["query"]
+                                            }
+                                        }
+                                }
+
 
                 ]}
-functions= {"read_file":tools.read_file,"list_file":tools.list_file,"write_file":tools.write_file,"delete_file":tools.delete_file}
+functions= {"read_file":tools.read_file,"list_file":tools.list_file,"write_file":tools.write_file,"delete_file":tools.delete_file,"search_web":tools.search_web,"document_search":document_search}
 #=================================================================================================
 console.print(KAIZEN,style="blue")
 total_tools = len(payload["tools"])
@@ -90,11 +121,12 @@ console.print(Panel(f"Yoo gotta type some crazy stuff here...\nfor now there are
 
 tset = set()
 def qwen(messages: dict):
-       
-    response = requests.post(apikey,
-                             json={"model": model,
-                                   "messages": messages["convo"],"tools":messages["tools"],"stream":False})
 
+    logger.info("Model started")   
+    response = requests.post(apikey,
+                            json={"model": model,
+                                "messages": messages["convo"],"tools":messages["tools"],"stream":False})
+    logger.debug("Model replied")
 
     reply = response.json()
     
@@ -110,12 +142,17 @@ def qwen(messages: dict):
         if call_signature in tset:
             respon = "This exact task was already completed. Do not repeat it — respond to the user right now. say the task is completed"
         else:
-            if "write_file" in name:
+            if "search_web" in name:
+                respon = func(argu["query"])
+            elif "document_search" in name:
+                respon = func(argu["query"],argu["path"])
+                print(respon)
+            elif "write_file" in name:
                 if argu["content"]:
                     respon = func(argu["path"],argu["content"])
                 else:
                     respon = func(argu["path"])
-                if "DONE" in respon:
+                if "Sucessfully" in respon:
                     tset.add(call_signature)
             else:
                 respon = func(argu["path"])
@@ -133,7 +170,12 @@ def main():
         text = input().strip()
         if text:
             payload["convo"].append({"role":"user","content":text})
-            reply = qwen(payload)
+            try:
+                reply = qwen(payload)
+            except Exception:
+                console.print(Rule(style="red"))
+                console.print("ERROR: LLM DID NOT RESPOND\nPlease Check Your Connection & Try Again",style="bold red",end=" ")
+                exit()
             if isinstance(reply, str):
                 payload["convo"].append({"role":"assistant","content":reply})
                 console.print(Rule(style="blue"))
