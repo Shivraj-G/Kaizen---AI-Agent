@@ -105,7 +105,7 @@ payload = {"convo":[],"tools":[{"type": "function",
                                                 "query": {"type": "string", "description": "Query to search from document"},
                                                 "path": {"type": "string", "description": "Path to file form which the text needs to be extracted for context"}
                                                 },
-                                            "required": ["query"]
+                                            "required": ["query","path"]
                                             }
                                         }
                                 }
@@ -145,6 +145,7 @@ def qwen(messages: dict):
             if "search_web" in name:
                 respon = func(argu["query"])
             elif "document_search" in name:
+                payload["convo"].append({"role":"system","content":"Instruction: Answer only if the correct answer is stated in the context, if not then say 'I dont know' "})
                 respon = func(argu["query"],argu["path"])
                 print(respon)
             elif "write_file" in name:

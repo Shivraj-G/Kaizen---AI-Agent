@@ -1,4 +1,5 @@
 import config
+import copy
 import requests
 from tools import read_file
 import os
@@ -8,25 +9,12 @@ load_dotenv()
 apikeyE = os.getenv("EmbedAPI")
 apikey = os.getenv("API")
 model = os.getenv("MODEL")
+testdata = os.getenv("testdata")
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-testdata = [{"question":"Who first used the Latin form of the word psychology?","ans":"Marulić"},
-            {"question":"Who is the earliest known English user of the word?","ans":"Blankaart"},
-            {"question":"Who defined psychology in 1890 as the science of mental life?","ans":"William James"},
-            {"question":"Which psychologist argued in 1913 for a purely objective, behaviorist view?","ans":"Watson"},
-            {"question":"What condition does the Ebers Papyrus mention?","ans":"depression"},
-            {"question":"Which Greek physician thought mental disorders had physical causes?","ans":"Hippocrates"},
-            {"question":"Where did Aristotle think mental processes took place?","ans":"heart"},
-            {"question":"Which Qing-era scholar proposed hemispheric lateralization?","ans":"Wang Qingren"},
-            {"question":"Who wrote Psychologia Empirica in 1732?","ans":"Christian Wolff"},
-            {"question":"Which philosopher rejected experimental psychology?","ans":"Kant"},
-            {"question":"Who called himself Professor of Empirical Psychology in 1783?","ans":"Ueberwasser"},
-            {"question":"When did Prussia make psychology a mandatory discipline?","ans":"1825"},
-            {"question":"Negative test: Who founded the first psychology lab in Leipzig?","ans":" "},
-            ]
 
 def text_embed(query: str):
     respnse = requests.post(apikeyE,json={"model":"nomic-embed-text","prompt":query})
@@ -34,7 +22,7 @@ def text_embed(query: str):
     reply = respnse.json()
     return reply["embedding"]
 
-def chunk_text(text,chunk_size=300,overlap=25):
+def chunk_text(text,chunk_size=150,overlap=15):
     words = text.split()
     chunks=[]
     i = 0
@@ -46,7 +34,7 @@ def chunk_text(text,chunk_size=300,overlap=25):
         i += chunk_size - overlap
     return chunks
 
-def find_similar_chunks(query, chunks,k):
+def find_similar_chunks(query, chunks,k:int=2):
         all_chunk = []
         for item in chunks:
              similarity = cosine_similarity(query,item["embedding"])
@@ -61,27 +49,17 @@ def cosine_similarity(a, b):
 
 def document_search(qury: str,path):
     logger.info("RAG started")
-    #messages = []
     embeded_query = text_embed(qury)
     try:
         text = read_file(path)
     except Exception as e:
          return f"ERROR: Couldnt read file for context {e}"
     doc = chunk_text(text)
-    same_same = find_similar_chunks(embeded_query,doc)
-    """context = ""
-    for i,info in enumerate(same_same):
-         context += str(i+1)+". "+info["info"] + ", "
-
-    messages.append({"role":"system","content":context})
-    messages.append({"role":"user","content":qury})"""
-    #response = requests.post(apikey,json={"model": model,"messages": messages,"stream":False})
-    #results = response.json()
-    #return results["message"]["content"]
-    #return context
+    same_same = find_similar_chunks(embeded_query,doc,2)
+    
     return same_same
 
-def hit_rate(q_embeds,chunks,top_k):
+def hit_rate(q_embeds,chunks,top_k = None):
      succsess = 0
      for qs in q_embeds:  
         same_same = find_similar_chunks(qs["question"],chunks,top_k)
@@ -94,19 +72,40 @@ def hit_rate(q_embeds,chunks,top_k):
      return f"{succsess}/{len(q_embeds)}"
 
 def testing():
-    path = r"D:\python\Psychology.docx"
+    path = r"#:\####\#####.docx"
     text = read_file(path)
-
-    for i,item in enumerate(testdata):
-          testdata[i]["question"] = text_embed(item["question"])
-    n=0
+    embededdata = copy.deepcopy(testdata)
+    for i,item in enumerate(embededdata):
+          embededdata[i]["question"] = text_embed(item["question"])
+    """n=0
     for chunk_size in [100, 150, 200, 300]:
         for overlap in [10,15,20,25]:
             chunks = chunk_text(text, chunk_size, overlap)   
             for top_n in [1, 2, 3]:
                 rate = hit_rate(testdata, chunks, top_n)
                 print(f"{n}|chunk_size: {chunk_size}|Overlap: {overlap}|top_n: {top_n}|rate: {rate}")
-                n +=1
+                n +=1"""
+    chunks = chunk_text(text)
+    succsess = 0
+    for j,question in enumerate(embededdata):
+        messages = []
+        same_same = find_similar_chunks(question["question"],chunks)
+        context = ""
+        for i,info in enumerate(same_same):
+            context += str(i+1)+". "+info["info"].lower() + ", "
+
+        messages.append({"role":"system","content":context})
+        messages.append({"role":"system","content":"Instruction: Answer only if the correct answer is stated in the context, if not then say 'I dont know' "})
+        messages.append({"role":"user","content":testdata[j]["question"]})
+        response = requests.post(apikey,json={"model": model,"messages": messages,"stream":False})
+        results = response.json()
+        
+        if testdata[j]["ans"] in results["message"]["content"]:
+            succsess += 1
+            print(f"{j}. Success")
+        else: print(f"{j}. Failed - {results['message']['content']}")
+
+    print(f"Success: {succsess}")
     return
 
 def main():
