@@ -17,12 +17,16 @@ Kaizen runs entirely on my own machine against a local LLM (`qwen2.5:3b-instruct
 
 ## Why I built this
 
-I wanted to actually understand how AI agents work under the hood, instead of importing a framework that hides the mechanics. Every piece — the tool-calling loop, dispatch, conversation memory, deduplication, chunking, embeddings, retrieval and the evaluation harness — was written and debugged by hand. I first started this because i just wanted to use an AI Agent locally on my low-end laptop, but Agent harness like Hermes and others were not compatible with small models which fit into my laptop, so i decided to build my own from scratch. 
+I wanted to understand how AI agents work under the hood, instead of importing a framework that hides the mechanics. Every piece — the tool-calling loop, dispatch, conversation memory, deduplication, chunking, embeddings, retrieval and the evaluation harness — was written and debugged by hand.
+
+It also started from a practical problem: I wanted a local AI agent on my low-end laptop, but agent harnesses like Hermes Agent require a 64k-token context window, and the small models that fit on my machine (my Qwen 3B has a 32k context) don't qualify. So I built my own from scratch, sized for a small model.
+
 ## Features
 
 - **Fully local** — runs on Ollama, no API keys, no cloud costs
 - **Real tool calling** — the model can read, list, write and delete files and search the web, using Ollama's native function-calling API
 - **Document Q&A (RAG)** — ask questions about a `.txt`, `.docx` or `.pdf` file; relevant passages are retrieved by meaning (embeddings + cosine similarity) and handed to the model as context
+- **Grounded answers** — the model is told to answer only from the retrieved context and to say "I dont know" otherwise
 - **Measured, not guessed** — retrieval settings were chosen from a 48-configuration sweep against a 13-question eval set (see [Evaluating retrieval](#evaluating-retrieval))
 - **Conversation memory** — full context across turns, including tool-call history
 - **Duplicate-call protection** — tracks completed tool calls by signature so the model doesn't needlessly re-run the same action
@@ -54,7 +58,7 @@ User message → Model (Ollama) → tool_call?
 | `write_file` | Creates/writes a file, with optional content |
 | `delete_file` | Deletes a file |
 | `search_web` | Searches the web (DuckDuckGo) and returns the top 5 results |
-| `search_document` | RAG: retrieves the most relevant passages from a local document for a query |
+| `search_document` | RAG: retrieves the most relevant passages from a local document and answers from them, or says "I dont know" if the document doesn't contain the answer |
 
 ## Document search (RAG)
 
@@ -68,10 +72,12 @@ query    ──► embed the query
          ──► cosine similarity against every chunk
          ──► take the top-n chunks
          ──► put them in the prompt as context, before the question
-         ──► model answers from that context
+         ──► model answers from that context, or says "I dont know"
 ```
 
 Defaults, chosen from the sweep below: `chunk_size=150` words, `overlap=15`, `top_n=2`.
+
+**Grounding.** The prompt places the retrieved context before the question and adds an instruction: answer only if the correct answer is stated in the context, otherwise say "I dont know". I checked by hand that questions the document doesn't cover get that reply instead of an answer from the model's own training.
 
 ## Evaluating retrieval
 
@@ -95,7 +101,7 @@ Instead of tuning by eyeballing answers, I built a small eval harness.
 - **Overlap results are noisy.** With 13 questions, one question is worth about 8 points, and changing overlap mostly just moves where the chunk boundaries land. I chose `150 / 15 / 2` because its neighbouring overlaps (10 and 20) also score 13/13 — a stable region, not a lucky cell.
 - **Near misses had a cause.** Two questions initially failed because look-alike chunks outranked the right one: a sentence about "Professor of *Empirical Psychology*" beat the one about the book *Psychologia Empirica*, and a passage mentioning "experimentation" beat a buried sentence about Kant rejecting experimental psychology. Embeddings match topic similarity, not exact names.
 
-**Caveats (honest ones):** the settings were tuned on the same 13 questions, so they are partly fitted; the document is small; and this measures *retrieval only*, not whether the model's final answer is correct. Answer-level and held-out evals are next (see roadmap).
+**Caveats (honest ones):** the settings were tuned on the same 13 questions, so they are partly fitted; the document is small; and the sweep measures *retrieval only*. Answer quality and the "I dont know" behaviour were checked by hand, not with an automated eval. A held-out question set and an automated answer-level eval are next (see roadmap).
 
 ## Setup
 
@@ -146,31 +152,15 @@ Small local models (3B parameters) are genuinely capable of real tool use and RA
 - **A `.docx` is not a text file.** It is a zip of XML, so `open(path).read()` fails with decode errors no matter the encoding; it needs a dedicated parser.
 - **Chunk size is a real design lever.** 20-word chunks gave disconnected fragments; 300-word chunks blurred topics together. The sweep above found the middle.
 - **Debug the measurement before the system.** My first eval run scored 3/13 — the cause was a case-sensitive comparison in the eval itself, not retrieval. After fixing it the score jumped to 11/13, and the two remaining misses turned out to be look-alike chunks (see above).
+- **Grounding needs an explicit escape hatch.** Telling the model to answer only from the context and otherwise say "I dont know" makes a 3B model refuse unanswerable questions. The opposite failure, refusing questions it *could* answer, is the thing to measure next.
 - **`logging` at DEBUG level also shows library chatter.** Setting the root logger to DEBUG printed every HTTP connection from `urllib3`; library loggers need their own level.
 
 ## Known limitations
 
 - Only handles one tool call per model turn (no parallel tool calls yet)
 - No sandboxing — the agent has real file system access, including delete; use with care
-- `search_document` re-reads and re-embeds the whole document on every query (about 2 seconds per chunk on my CPU); there is no persistence or caching yet
-- Retrieval is evaluated, but final-answer quality and "I don't know" behaviour are not yet
+- Retrieval is measured with an automated eval; answer quality and "I dont know" behaviour were checked manually
 - Small-model reliability, while decent, is not perfect
-
-## Roadmap
-
-- [x] Web search tool
-- [x] Document search (RAG) over `.txt` / `.docx` / `.pdf`
-- [x] Delete-file tool
-- [x] Retrieval eval harness and chunk-size / overlap / top-n sweep
-- [ ] Answer-level eval, including questions the document doesn't answer (the model should say it doesn't know)
-- [ ] Held-out question set to check the tuned settings generalize
-- [ ] Cache embeddings to disk so documents aren't re-embedded on every query
-- [ ] Paragraph-aware chunking
-- [ ] Hybrid search (keyword + embeddings) for exact names and titles
-- [ ] Vector database (e.g. Chroma), measured against the eval
-- [ ] Shell command tool (with safety limits)
-- [ ] Generalize the dedup guard to all tools
-- [ ] Finish moving the remaining debug prints to the `logging` module (the eval harness already uses it)
 
 ## Tech stack
 
