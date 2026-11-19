@@ -126,6 +126,7 @@ Create a `.env` file next to the scripts:
 API=http://localhost:11434/api/chat
 EmbedAPI=http://localhost:11434/api/embeddings
 MODEL=qwen2.5:3b-instruct
+testdata=[] # this is a list of questions and answer used in evaluating RAG
 ```
 
 ```bash
