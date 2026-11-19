@@ -112,7 +112,8 @@ Instead of tuning by eyeballing answers, I built a small eval harness.
 
 ```bash
 # Pull the models
-ollama pull qwen2.5:3b-instruct
+# I used these models, you can have whichever you like
+ollama pull qwen2.5:3b-instruct 
 ollama pull nomic-embed-text
 
 # Install dependencies
